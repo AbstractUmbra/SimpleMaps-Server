@@ -1,0 +1,11 @@
+services:
+  map-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: simple-maps-server
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:44333:44333
+    environment:
+      - RUST_LOG={RUST_LOG:-info}
