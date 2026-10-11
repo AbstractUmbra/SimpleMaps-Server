@@ -6,4 +6,4 @@ services:
     ports:
       - 127.0.0.1:44333:44333
     environment:
-      - RUST_LOG={RUST_LOG:-info}
+      - RUST_LOG=${RUST_LOG:-info}

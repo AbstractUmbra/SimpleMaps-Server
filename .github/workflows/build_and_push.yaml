@@ -5,6 +5,11 @@ on:
   push:
     branches:
       - "main"
+    paths:
+     - "src/**"
+     - "Cargo.toml"
+     - "Cargo.lock"
+     - "Dockerfile"
 
 concurrency:
   cancel-in-progress: true
