@@ -27,9 +27,6 @@ RUN touch src/main.rs \
     && cargo build --release --target x86_64-unknown-linux-musl \
     && strip target/x86_64-unknown-linux-musl/release/$APP_NAME
 
-RUN file target/x86_64-unknown-linux-musl/release/$APP_NAME \
-    && readelf -l target/x86_64-unknown-linux-musl/release/$APP_NAME
-
 # Stage 2: Minimal runtime image
 FROM alpine:latest
 
