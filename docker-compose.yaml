@@ -1,8 +1,6 @@
 services:
   map-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/abstractumbra/simplemaps-server:latest
     container_name: simple-maps-server
     restart: unless-stopped
     ports:
