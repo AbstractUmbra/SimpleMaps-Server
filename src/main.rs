@@ -308,7 +308,34 @@ async fn handle_connection(socket: WebSocket, app: AppState) {
     }
 
     // Remove the connection immediately on disconnect.
-    app.connections.lock().await.remove(&id);
+    // Remove the disconnected client and notify reciprocal party members.
+    let peer_notifies = {
+        let mut connections = app.connections.lock().await;
+
+        if let Some(disconnected) = connections.remove(&id) {
+            let disconnected_state = disconnected.state;
+
+            if disconnected_state.user_key.is_empty() {
+                Vec::new()
+            } else {
+                connections
+                    .values()
+                    .filter(|peer| {
+                        disconnected_state.party.contains(&peer.state.user_key)
+                            && peer.state.party.contains(&disconnected_state.user_key)
+                    })
+                    .map(|peer| Arc::clone(&peer.force_notify))
+                    .collect::<Vec<_>>()
+            }
+        } else {
+            Vec::new()
+        }
+    };
+
+    // Notify outside the registry lock.
+    for notify in peer_notifies {
+        notify.notify_one();
+    }
 
     info!(id, "Disconnected");
 }
