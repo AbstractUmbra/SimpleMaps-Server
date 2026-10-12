@@ -8,6 +8,7 @@ use std::{
     },
     time::Duration,
 };
+use tokio_util::sync::CancellationToken;
 
 use axum::{
     Router,
@@ -50,6 +51,7 @@ struct ClientEntry {
 struct AppState {
     connections: SharedRegistry,
     next_id: Arc<AtomicU64>,
+    shutdown: CancellationToken,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,9 +88,12 @@ async fn main() {
         )
         .init();
 
+    let shutdown = CancellationToken::new();
+
     let state = AppState {
         connections: Arc::new(Mutex::new(BTreeMap::new())),
         next_id: Arc::new(AtomicU64::new(1)),
+        shutdown: shutdown.clone(),
     };
 
     let app = Router::new()
@@ -102,8 +107,38 @@ async fn main() {
     info!("WebSocket server listening on 0.0.0.0:44333");
 
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(shutdown))
         .await
         .expect("HTTP server failed");
+}
+
+async fn shutdown_signal(shutdown: CancellationToken) {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let mut terminate =
+            signal(SignalKind::terminate()).expect("Failed to install SIGTERM handler");
+
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => {
+                if let Err(error) = result {
+                    tracing::error!(%error, "Failed to listen for Ctrl+C");
+                }
+            }
+            _ = terminate.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            tracing::error!(%error, "Failed to listen for Ctrl+C");
+        }
+    }
+
+    tracing::info!("Shutdown signal received");
+    shutdown.cancel();
 }
 
 async fn websocket_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
@@ -135,6 +170,9 @@ async fn handle_connection(socket: WebSocket, app: AppState) {
 
     // The first interval tick is immediate.
     let mut force_deadline: Option<Instant> = None;
+
+    // Track whether the loop exited because of shutdown.
+    let mut shutdown_requested = false;
 
     loop {
         // Copy the deadline so the timer future can own it.
@@ -250,7 +288,21 @@ async fn handle_connection(socket: WebSocket, app: AppState) {
                     break;
                 }
             }
+
+            _ = app.shutdown.cancelled() => {
+                info!(id, "Closing WebSocket for shutdown");
+                shutdown_requested = true;
+                break;
+            }
         }
+    }
+
+    if shutdown_requested {
+        let _ = time::timeout(
+            std::time::Duration::from_secs(1),
+            sender.send(Message::Close(None)),
+        )
+        .await;
     }
 
     // Remove the connection immediately on disconnect.
