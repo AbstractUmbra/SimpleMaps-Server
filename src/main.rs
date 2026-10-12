@@ -142,7 +142,9 @@ async fn shutdown_signal(shutdown: CancellationToken) {
 }
 
 async fn websocket_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
-    ws.on_upgrade(move |socket| handle_connection(socket, state))
+    ws.max_message_size(16 * 1024)
+        .max_frame_size(16 * 1024)
+        .on_upgrade(move |socket| handle_connection(socket, state))
 }
 
 async fn handle_connection(socket: WebSocket, app: AppState) {
